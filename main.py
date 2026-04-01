@@ -7,6 +7,9 @@ from google import genai
 from chromadb.utils import embedding_functions
 
 app = FastAPI()
+@app.get("/")
+async def root():
+    return {"message": "HITS Leo Bot 2.0 is Online"}
 
 app.add_middleware(
     CORSMiddleware,
