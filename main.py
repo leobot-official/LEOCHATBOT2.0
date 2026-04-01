@@ -8,7 +8,8 @@ from dotenv import load_dotenv
 from chromadb.utils import embedding_functions
 
 # 1. Load Environment Variables
-load_dotenv()
+#load_dotenv()
+os.getenv("GOOGLE_API_KEY")
 
 app = FastAPI()
 
