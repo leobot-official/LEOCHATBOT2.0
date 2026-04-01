@@ -4,16 +4,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from google import genai
-from dotenv import load_dotenv
 from chromadb.utils import embedding_functions
 
-# 1. Load Environment Variables
-#load_dotenv()
-os.getenv("GOOGLE_API_KEY")
-
+# 1. Initialize FastAPI
 app = FastAPI()
 
-# 2. CORS Middleware (Keep this first!)
+# 2. CORS Middleware - CRITICAL for GitHub Pages to work
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,8 +18,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 3. GLOBAL INITIALIZATION (Crucial: Define 'client' here)
-client = genai.Client() # This is the line your code was missing/couldn't see
+# 3. GLOBAL INITIALIZATION
+# Render will look for "GOOGLE_API_KEY" in your Environment Variables
+api_key = os.getenv("GOOGLE_API_KEY")
+client = genai.Client(api_key=api_key)
+
+# Connect to the Vector Database
 db_client = chromadb.PersistentClient(path="./hits_vectordb")
 default_ef = embedding_functions.DefaultEmbeddingFunction()
 collection = db_client.get_collection(name="hits_knowledge", embedding_function=default_ef)
@@ -31,67 +31,36 @@ collection = db_client.get_collection(name="hits_knowledge", embedding_function=
 class Query(BaseModel):
     text: str
 
-
 @app.post("/chat")
 async def chat(query: Query):
     try:
         # 1. Retrieval: Get the most relevant HITS data
-        results = collection.query(query_texts=[query.text], n_results=3) # Increased to 3 for better detail
+        results = collection.query(query_texts=[query.text], n_results=3)
         context = "\n".join(results['documents'][0])
         
-        # 2. Generation: One clear call with the Expert System instructions
+        # 2. Generation: Using gemini-1.5-flash (The correct model name)
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-1.5-flash",
             config={
                 'system_instruction': """
                 You are the official HITS Aeronautical Engineering Expert. 
-                Use the provided context to answer. If the answer isn't in the context, 
-                kindly inform the user you specialize in HITS Aeronautical data.
+                Use the provided context to answer accurately. 
                 
                 Key Areas:
                 - Specializations: UAV, Satellite Tech, Space Dynamics.
-                - Labs: Supersonic Wind Tunnel (Mach 2.0-3.5), ALSIM Flight Simulator, Aircraft Hangars.
-                - Alumni: Always mention the PDF link for full lists: 
-                https://api.hindustanuniv.ac.in/uploads/Prominent_Alumni_03dd0ed53d.pdf
-                - Placements: Mention Boeing, Airbus, ISRO, and HAL.
+                - Labs: Supersonic Wind Tunnel (Mach 2.5), ALSIM Flight Simulator, Aircraft Hangars.
+                - Alumni: Provide the link: https://api.hindustanuniv.ac.in/uploads/Prominent_Alumni_03dd0ed53d.pdf
+                - Placements: Boeing, Airbus, ISRO, and HAL.
                 
-                Tone: Professional, helpful, and technically accurate.
+                If the answer isn't in the context, say you specialize in HITS Aeronautical details.
+                Use Markdown formatting (tables and bold text) for technical details.
                 """
             },
             contents=f"Context: {context}\nQuestion: {query.text}"
         )
+        
         return {"response": response.text}
+
     except Exception as e:
         print(f"Error: {e}")
-        return {"response": "I'm having trouble accessing the HITS database right now."}
-    try:
-        # Retrieval
-        results = collection.query(query_texts=[query.text], n_results=2)
-        context = "\n".join(results['documents'][0])
-        
-        # Generation using the global 'client'
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            config={'system_instruction': "You are Leo Bot 2.0. Use HITS context only."},
-            contents=f"Context: {context}\nQuestion: {query.text}"
-        )
-        response = client.models.generate_content(
-    model="gemini-2.5-flash",
-    config={
-        'system_instruction': """
-        You are the official HITS Aeronautical Engineering Expert. 
-        Your knowledge covers:
-        1. Specializations (UAV, Satellite Tech, Space Dynamics).
-        2. Labs (Supersonic Wind Tunnel, Fatigue & Damage Lab, Simulation Lab).
-        3. Alumni: If asked about alumni, list key names and provide the PDF link: https://hindustanuniv.ac.in/pdf/aeronautical_alumni.pdf.
-        4. Career: Focus on placements in Boeing, Airbus, and ISRO.
-        
-        If a user prompt is vague, ask for clarification. Be professional and technical.
-        """
-    },
-    contents=f"Context: {context}\nQuestion: {query.text}"
-)
-        return {"response": response.text}
-    except Exception as e:
-        print(f"Error occurred: {e}") # This helps you see errors in the terminal
-        return {"response": f"Sorry, I encountered an error: {str(e)}"}
+        return {"response": "Leo Bot is currently warming up or having trouble accessing the database. Please try again in a moment."}
