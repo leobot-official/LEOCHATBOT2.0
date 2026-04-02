@@ -78,22 +78,33 @@ async def chat(query: Query):
         context = "\n".join(results['documents'][0])
         full_prompt = f"Context: {context}\n\nQuestion: {clean_query}\n\nAnswer only using the context. If not found, give info@hindustanuniv.ac.in."
 
-        # 2. GENERATION LOGIC WITH CORRECT INDENTATION
-        try:
-            # Try the standard latest alias first
-            response = client.models.generate_content(
-                model="gemini-flash-latest", 
-                contents=full_prompt
-            )
-            return {"response": response.text}
-        except Exception as e:
-            print(f"Flash-latest failed, trying 3.1: {e}")
-            # Fallback to 3.1 if the alias fails
-            response = client.models.generate_content(
-                model="gemini-3.1-flash", 
-                contents=full_prompt
-            )
-            return {"response": response.text}
+        # --- 2. THE 2026 STABLE FIX ---
+        model_priority = [
+            "gemini-2.0-flash",    
+            "gemini-2.5-flash", 
+            "gemini-2.5-flash-lite",
+            "gemini-1.5-flash"
+        ]
+
+        response = None
+        last_error_msg = ""
+
+        for model_id in model_priority:
+            try:
+                print(f"DEBUG: Trying model {model_id}...")
+                response = client.models.generate_content(
+                    model=model_id, 
+                    contents=full_prompt
+                )
+                if response:
+                    print(f"DEBUG: Success with {model_id}!")
+                    return {"response": response.text}
+            except Exception as e:
+                last_error_msg = str(e)
+                print(f"DEBUG: {model_id} failed: {e}")
+                continue 
+
+        return {"response": f"System syncing. Error: {last_error_msg[:50]}"}
 
     except Exception as final_e:
         print(f"Final Gen Error: {final_e}")
