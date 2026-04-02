@@ -3,3 +3,5 @@ uvicorn[standard]
 chromadb
 google-genai
 pydantic
+pydantic-settings
+python-multipart
