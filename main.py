@@ -38,6 +38,12 @@ client = genai.Client(
     api_key=os.getenv("GOOGLE_API_KEY"), 
     http_options={'api_version': 'v1'}
 )
+# Add this right after you create the 'client'
+models = client.models.list()
+print("--- YOUR AVAILABLE MODELS ---")
+for m in models:
+    if 'generateContent' in m.supported_generation_methods:
+        print(f"ID: {m.name} | Display: {m.display_name}")
 
 try:
     # IMPORTANT: Ensure 'hits_vectordb' is NOT in your .gitignore
