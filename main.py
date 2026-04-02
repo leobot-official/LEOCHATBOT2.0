@@ -15,7 +15,7 @@ from pydantic import BaseModel
 import google.genai as genai 
 from chromadb.utils import embedding_functions
 
-# Force CPU for ChromaDB stability
+# Force CPU for stability
 os.environ["ONNXRUNTIME_EXECUTION_PROVIDERS"] = "CPUExecutionProvider"
 
 app = FastAPI()
@@ -33,20 +33,21 @@ app.add_middleware(
 )
 
 # 1. INITIALIZATION
-# We use the 'v1' stable version
 client = genai.Client(
     api_key=os.getenv("GOOGLE_API_KEY"), 
     http_options={'api_version': 'v1'}
 )
-# Add this right after you create the 'client'
-models = client.models.list()
-print("--- YOUR AVAILABLE MODELS ---")
-for m in models:
-    if 'generateContent' in m.supported_generation_methods:
-        print(f"ID: {m.name} | Display: {m.display_name}")
+
+# List models in logs to help you debug during the demo
+try:
+    models = client.models.list()
+    print("--- YOUR AVAILABLE MODELS ---")
+    for m in models:
+        print(f"ID: {m.name}")
+except Exception as e:
+    print(f"Could not list models: {e}")
 
 try:
-    # IMPORTANT: Ensure 'hits_vectordb' is NOT in your .gitignore
     db_client = chromadb.PersistentClient(path="./hits_vectordb")
     default_ef = embedding_functions.DefaultEmbeddingFunction()
     collection = db_client.get_collection(name="hits_knowledge", embedding_function=default_ef)
@@ -77,21 +78,23 @@ async def chat(query: Query):
         context = "\n".join(results['documents'][0])
         full_prompt = f"Context: {context}\n\nQuestion: {clean_query}\n\nAnswer only using the context. If not found, give info@hindustanuniv.ac.in."
 
-        # 2. THE FIX: Using 'gemini-1.5-flash-latest'
-        # This string is more compatible with newer Free Tier keys
-        response = client.models.generate_content(
-        model="gemini-flash-latest", # This automatically finds the active model
-        contents=full_prompt
-        )
-        
-        return {"response": response.text}
-
-    except Exception as e:
-        print(f"Flash-latest failed, trying 3.1: {e}")
-    response = client.models.generate_content(
-        model="gemini-3.1-flash", 
-        contents=full_prompt
-    )
+        # 2. GENERATION LOGIC WITH CORRECT INDENTATION
+        try:
+            # Try the standard latest alias first
+            response = client.models.generate_content(
+                model="gemini-flash-latest", 
+                contents=full_prompt
+            )
             return {"response": response.text}
-        except:
-            return {"response": "The HITS system is busy. Please contact **info@hindustanuniv.ac.in**."}
+        except Exception as e:
+            print(f"Flash-latest failed, trying 3.1: {e}")
+            # Fallback to 3.1 if the alias fails
+            response = client.models.generate_content(
+                model="gemini-3.1-flash", 
+                contents=full_prompt
+            )
+            return {"response": response.text}
+
+    except Exception as final_e:
+        print(f"Final Gen Error: {final_e}")
+        return {"response": "The HITS system is busy. Please contact **info@hindustanuniv.ac.in**."}
