@@ -55,44 +55,46 @@ async def chat(query: Query):
         # 1. SEARCH DATABASE
         results = collection.query(
             query_texts=[clean_query], 
-            n_results=5, # Higher results for more context
+            n_results=5, 
             include=['documents', 'distances']
         )
         
         best_distance = results['distances'][0][0] if results['distances'] else 2.0
         print(f"DEBUG: Search Distance is {best_distance}")
 
-        # 2. DEFINE SYSTEM INSTRUCTIONS BASED ON DISTANCE
-        if best_distance < 1.4:
-            # High Accuracy Mode (Strict Context)
-            sys_instr = "You are the HITS Expert. Use the provided context to answer. Use Markdown tables for specs and bullets for fees. If not found, give info@hindustanuniv.ac.in."
-            context = "\n".join(results['documents'][0])
-        elif best_distance < 1.8:
-            # Helpful Assistant Mode (Loose Context)
-            sys_instr = "The user might have a typo or be asking a general question. Use the context as a guide, but be helpful. Suggest corrections if the word looks like 'HITSEEE' or 'EEE'."
+        # 2. HYBRID LOGIC: Choose the "Vibe" of the response
+        if best_distance < 1.7:
+            # High/Medium Accuracy - Give the AI the "Expert" Persona here
+            persona_prefix = (
+                "You are the HITS Expert. Answer based on this context. "
+                "Use Markdown tables for data, bold names for alumni, and provide links if seen. "
+                "Be detailed and professional.\n\n"
+            )
             context = "\n".join(results['documents'][0])
         else:
-            # Fallback Mode
-            return {"response": "I am sorry, I don't have that information in my current database. Please contact **info@hindustanuniv.ac.in**."}
+            # Fallback for very high distances
+            return {"response": "I am sorry, I don't have specific data on that. Please contact **info@hindustanuniv.ac.in**."}
 
-        # 3. MODEL PRIORITY LOOP (The Code 2 Stability)
+        # 3. CONSTRUCT THE FINAL PROMPT (No more 'config' needed)
+        full_prompt = f"{persona_prefix}Context: {context}\n\nUser Question: {query.text}"
+
+        # 4. STABLE MODEL LOOP
         model_priority = [
-            "gemini-1.5-flash", # Put 1.5 first to avoid the 2.0 quota errors
+            "gemini-1.5-flash", 
             "gemini-2.5-flash", 
             "gemini-2.0-flash"
         ]
 
-        full_prompt = f"Context: {context}\n\nUser Question: {query.text}"
-
         for model_id in model_priority:
             try:
                 print(f"DEBUG: Trying {model_id}...")
+                # We simplified this call to avoid the JSON field error
                 response = client.models.generate_content(
                     model=model_id,
-                    contents=full_prompt,
-                    config={"system_instruction": sys_instr}
+                    contents=full_prompt
                 )
                 if response:
+                    print(f"DEBUG: Success with {model_id}!")
                     return {"response": response.text}
             except Exception as e:
                 print(f"DEBUG: {model_id} failed: {e}")
@@ -102,4 +104,4 @@ async def chat(query: Query):
 
     except Exception as final_e:
         print(f"Final Gen Error: {final_e}")
-        return {"response": "System syncing. Please contact **info@hindustanuniv.ac.in**."}
+        return {"response": "HITS System Error. Please contact **info@hindustanuniv.ac.in**."}
