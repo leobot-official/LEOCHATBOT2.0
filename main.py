@@ -1,7 +1,7 @@
 import os
 import sys
 import logging
-
+import time
 # --- 1. RENDER SQLITE VERSION FIX ---
 try:
     import pysqlite3
@@ -118,8 +118,9 @@ async def chat(query: Query):
         else:
             return {"response": "I'm sorry, I don't have that specific information in my records. Please contact **info@hindustanuniv.ac.in**."}
 
-        # D. Dual-Key & Multi-Model Failover Loop
-        model_priority = ["gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-2.0-flash"]
+        # D. Dual-Key & Multi-Model Failover Loop (FIXED)
+        # We use fully qualified names and prioritize stable models
+        model_priority = ["models/gemini-1.5-flash", "models/gemini-1.5-flash-8b"]
 
         for client_idx, gen_client in enumerate(clients):
             for model_id in model_priority:
@@ -131,12 +132,19 @@ async def chat(query: Query):
                     )
                     if response:
                         return {"response": response.text}
+                
                 except Exception as e:
-                    logger.error(f"Fail: Client {client_idx}, Model {model_id}: {str(e)}")
+                    error_msg = str(e)
+                    logger.error(f"Fail: Client {client_idx}, Model {model_id}: {error_msg}")
+                    
+                    # 429 RESOURCE_EXHAUSTED Fix: Wait briefly before trying next key/model
+                    if "429" in error_msg:
+                        logger.warning("Rate limit hit. Sleeping for 2 seconds...")
+                        time.sleep(2)
                     continue 
 
         return {"response": "All HITS system nodes are busy. Please try again in a moment or email **info@hindustanuniv.ac.in**."}
 
     except Exception as final_e:
         logger.critical(f"Critical System Error: {str(final_e)}")
-        return {"response": "A system error occurred. Please contact the administrator at **info@hindustanuniv.ac.in**."}
+        return {"response": "A system error occurred. Please contact **info@hindustanuniv.ac.in**."}
