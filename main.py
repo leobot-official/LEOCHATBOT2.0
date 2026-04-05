@@ -19,6 +19,14 @@ os.environ["ONNXRUNTIME_EXECUTION_PROVIDERS"] = "CPUExecutionProvider"
 
 app = FastAPI()
 
+# GREETING CONSTANT - Your required string
+EXACT_GREETING = (
+    "Hello! I am Leo Bot, your HITS Expert. I'm delighted to provide you with "
+    "detailed and professional information regarding Hindustan Institute of Technology "
+    "and Science (HITS), particularly focusing on HITSEEE, Admissions, and the "
+    "esteemed Department of Aeronautical Engineering."
+)
+
 @app.get("/")
 async def root():
     return {"status": "online", "bot": "HITS Leo Bot 2.0 Combined"}
@@ -50,17 +58,12 @@ class Query(BaseModel):
 @app.post("/chat")
 async def chat(query: Query):
     try:
-        clean_query = query.text.lower()
+        clean_query = query.text.lower().strip()
         
-        # 1. SPECIAL CASE: GREETINGS/GENERAL INTRO
-        if clean_query in ["hi", "hello", "hey", "start"]:
-            return {
-                "response": (
-                    "Hello! As the HITS Expert, I'm here to provide you with detailed information "
-                    "regarding the HITSEEE, Admissions, and the Department of Aeronautical Engineering at HITS. "
-                    "How can I assist you with your queries today?"
-                )
-            }
+        # 1. SPECIAL CASE: STRICT GREETING RULE
+        # This catches the "First Impression" exactly as you requested
+        if clean_query in ["hi", "hello", "hey", "start", "greetings"]:
+            return {"response": EXACT_GREETING}
 
         # 2. SEARCH DATABASE
         results = collection.query(
@@ -71,22 +74,28 @@ async def chat(query: Query):
         
         best_distance = results['distances'][0][0] if results['distances'] else 2.0
         
-        # 3. DYNAMIC PERSONA LOGIC
+        # 3. DYNAMIC PERSONA LOGIC (Converted from your system_template)
         if best_distance < 1.7:
             context = "\n".join(results['documents'][0])
-            # We inject your preferred persona directly into the prompt
-            persona = (
-                "You are the HITS Expert. You provide detailed, professional information regarding "
-                "HITSEEE, Admissions, and the Department of Aeronautical Engineering at HITS. "
+            
+            # This combines your Persona + Knowledge Base instructions
+            persona_prefix = (
+                f"You are Leo Bot, the HITS Expert. {EXACT_GREETING}\n\n"
+                "INSTRUCTIONS: Use the following context to answer the user's question. "
                 "Always use markdown tables for data and provide links if available. "
-                "Context provided below:\n\n"
+                "If the answer isn't in the context, politely refer them to info@hindustanuniv.ac.in.\n\n"
+                f"Context: {context}"
             )
-            full_prompt = f"{persona}Context: {context}\n\nUser Question: {query.text}"
+            
+            full_prompt = f"{persona_prefix}\n\nUser Question: {query.text}"
         else:
-            return {"response": "I'm sorry, I don't have that specific information in my archives. Please contact **info@hindustanuniv.ac.in**."}
+            # Fallback for questions outside the VectorDB scope
+            return {
+                "response": "I'm sorry, I don't have that specific information in my context. Please contact **info@hindustanuniv.ac.in** for assistance."
+            }
 
         # 4. STABLE MODEL LOOP
-        model_priority = ["gemini-1.5-flash", "gemini-2.5-flash", "gemini-2.0-flash"]
+        model_priority = ["gemini-1.5-flash", "gemini-2.0-flash"]
 
         for model_id in model_priority:
             try:
@@ -97,9 +106,10 @@ async def chat(query: Query):
                 if response:
                     return {"response": response.text}
             except Exception as e:
+                print(f"Model {model_id} failed, trying next...")
                 continue 
 
-        return {"response": "The HITS system is busy. Please contact **info@hindustanuniv.ac.in**."}
+        return {"response": "The HITS system is currently busy. Please contact **info@hindustanuniv.ac.in**."}
 
     except Exception as final_e:
-        return {"response": "System error. Please contact **info@hindustanuniv.ac.in**."}
+        return {"response": f"System error: {str(final_e)}. Please contact **info@hindustanuniv.ac.in**."}
